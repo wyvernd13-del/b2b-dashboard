@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B2B Cold Calls Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{--bg:#0f1117;--surface:#1a1d27;--surface2:#23263a;--border:rgba(255,255,255,0.08);--text:#f0f2ff;--muted:#8b92b8;--accent:#4f8ef7;--accent2:#30d9a0;--warn:#f7ac4f;--danger:#f76f6f;--purple:#a78bfa;--radius:12px;--radius-sm:8px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+.shell{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.logo{padding:20px 20px 16px;border-bottom:1px solid var(--border)}
+.logo h1{font-size:15px;font-weight:600;letter-spacing:-.3px}
+.logo p{font-size:11px;color:var(--muted);margin-top:2px}
+nav{padding:12px 8px;flex:1}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:rgba(79,142,247,.15);color:var(--accent)}
+.nav-icon{width:18px;height:18px;flex-shrink:0;opacity:.7}
+.nav-item.active .nav-icon{opacity:1}
+.sidebar-footer{padding:16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+.sync-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.sync-dot.live{background:var(--accent2);box-shadow:0 0 6px var(--accent2);animation:pulse 2s infinite}
+.sync-dot.error{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-width:0}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;flex-wrap:wrap}
+.page-title{font-size:17px;font-weight:600;letter-spacing:-.3px}
+.topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.month-tabs{display:flex;gap:3px;background:var(--surface2);padding:3px;border-radius:var(--radius-sm)}
+.mtab{padding:5px 13px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;color:var(--muted);border:none;background:none;transition:all .15s}
+.mtab.active{background:var(--accent);color:#fff}
+.btn{padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{opacity:.88;color:#fff}
+.btn.spinning .spin-icon{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.content{padding:20px 24px;flex:1}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--kpi-color,var(--accent))}
+.kpi-label{font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.kpi-val{font-size:24px;font-weight:700;letter-spacing:-1px;line-height:1}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;vertical-align:middle}
+.delta-up{background:rgba(48,217,160,.15);color:var(--accent2)}
+.delta-dn{background:rgba(247,111,111,.15);color:var(--danger)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.chart-wrap{position:relative}
+/* Agent table */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;padding:8px 10px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{padding:10px 10px;border-bottom:1px solid var(--border);vertical-align:middle;font-size:13px}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl tbody tr:hover td{background:rgba(255,255,255,.02)}
+.avatar{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.agent-cell{display:flex;align-items:center;gap:8px}
+.bar-outer{background:rgba(255,255,255,.07);height:4px;border-radius:2px;width:70px;display:inline-block;vertical-align:middle;margin-left:6px}
+.bar-inner{height:100%;border-radius:2px}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.b-green{background:rgba(48,217,160,.15);color:var(--accent2)}
+.b-blue{background:rgba(79,142,247,.15);color:var(--accent)}
+.b-warn{background:rgba(247,172,79,.15);color:var(--warn)}
+.b-red{background:rgba(247,111,111,.15);color:var(--danger)}
+/* Funnel */
+.funnel-item{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.funnel-label{font-size:12px;color:var(--muted);width:130px;flex-shrink:0}
+.funnel-bar-wrap{flex:1;background:rgba(255,255,255,.06);height:22px;border-radius:4px;overflow:hidden;position:relative}
+.funnel-bar{height:100%;border-radius:4px;transition:width .6s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:8px}
+.funnel-bar span{font-size:11px;font-weight:600;color:rgba(255,255,255,.9);white-space:nowrap}
+.funnel-pct{font-size:11px;color:var(--muted);width:48px;text-align:right;flex-shrink:0}
+/* Loading overlay */
+.loading-overlay{position:fixed;inset:0;background:rgba(15,17,23,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px)}
+.loading-overlay.hidden{display:none}
+.spinner{width:40px;height:40px;border:3px solid rgba(79,142,247,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px}
+.loading-overlay p{color:var(--muted);font-size:13px}
+/* Daily table */
+.daily-row-today td{background:rgba(79,142,247,.06)}
+/* Error banner */
+.error-banner{background:rgba(247,111,111,.12);border:1px solid rgba(247,111,111,.3);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--danger);display:none}
+/* Toast */
+.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;transform:translateY(80px);opacity:0;transition:all .3s;z-index:200}
+.toast.show{transform:translateY(0);opacity:1}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted);margin-bottom:10px}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+/* Weekly */
+.wk-today td{background:rgba(79,142,247,.05);font-weight:600}
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
+@media(max-width:640px){.sidebar{display:none}.kpi-row{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p id="loadingMsg">Connecting to Google Sheets…</p>
+</div>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo">
+      <h1>📞 B2B Cold Calls</h1>
+      <p>Live Dashboard</p>
+    </div>
+    <nav>
+      <button class="nav-item active" onclick="showPage('overview')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </button>
+      <button class="nav-item" onclick="showPage('agents')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        Agents
+      </button>
+      <button class="nav-item" onclick="showPage('funnel')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        Funnel
+      </button>
+      <button class="nav-item" onclick="showPage('daily')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Daily Log
+      </button>
+      <button class="nav-item" onclick="showPage('weekly')">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Weekly Trend
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="lastSync">Last sync: —</div>
+      <div class="sync-row">
+        <div class="sync-dot" id="syncDot"></div>
+        <span id="syncStatus">Connecting…</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="page-title" id="pageTitle">Overview</div>
+      <div class="topbar-right">
+        <div class="month-tabs">
+          <button class="mtab" onclick="setMonth('FEB')">Feb</button>
+          <button class="mtab" onclick="setMonth('MAR')">Mar</button>
+          <button class="mtab" onclick="setMonth('APR')">Apr</button>
+          <button class="mtab" onclick="setMonth('MAY')">May</button>
+          <button class="mtab active" onclick="setMonth('ALL')">All</button>
+        </div>
+        <button class="btn" id="refreshBtn" onclick="refreshAll()">
+          <svg class="spin-icon" style="width:13px;height:13px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+        <button class="btn" onclick="exportCSV()">⬇ Export</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div style="background:rgba(48,217,160,.10);border:1px solid rgba(48,217,160,.25);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#30d9a0;font-weight:600">Version: Monday-Friday weekly logic only</div>
+      <div class="error-banner" id="errorBanner"></div>
+
+      <!-- OVERVIEW -->
+      <div id="page-overview">
+        <div class="kpi-row" id="kpiRow"></div>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Calls · Reached · Interested by Month</div></div>
+            <div class="legend">
+              <span><span class="legend-dot" style="background:#4f8ef7"></span>Calls</span>
+              <span><span class="legend-dot" style="background:#30d9a0"></span>Reached</span>
+              <span><span class="legend-dot" style="background:#f7ac4f"></span>Interested</span>
+            </div>
+            <div class="chart-wrap" style="height:220px"><canvas id="monthlyChart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">Reached Conversion % by Agent</div><span style="font-size:11px;color:var(--muted)" id="overviewPeriodLabel"></span></div>
+            <div class="chart-wrap" style="height:250px"><canvas id="connectChart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Interested Conversion % by Agent</div></div>
+          <div class="chart-wrap" style="height:170px"><canvas id="interestChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- AGENTS -->
+      <div id="page-agents" style="display:none">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Agent Performance — <span id="agentPeriodLabel"></span></div>
+            <span style="font-size:11px;color:var(--muted)">Sorted by calls</span>
+          </div>
+          <table class="tbl" id="agentTable">
+            <thead><tr><th>Agent</th><th>Team</th><th>Calls</th><th>Reached</th><th>Reached %</th><th>Interested</th><th>Interested %</th><th>Sent AM</th><th>Talk Time</th><th>Status</th></tr></thead>
+            <tbody id="agentBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- FUNNEL -->
+      <div id="page-funnel" style="display:none">
+        <div class="grid2">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Conversion Funnel — <span id="funnelPeriodLabel"></span></div></div>
+            <div id="funnelList"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">Funnel Breakdown</div></div>
+            <div class="chart-wrap" style="height:290px"><canvas id="funnelChart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Month-over-Month Funnel Comparison</div></div>
+          <div class="legend">
+            <span><span class="legend-dot" style="background:#4f8ef7"></span>Calls</span>
+            <span><span class="legend-dot" style="background:#30d9a0"></span>Reached</span>
+            <span><span class="legend-dot" style="background:#f7ac4f"></span>Interested</span>
+          </div>
+          <div class="chart-wrap" style="height:190px"><canvas id="momChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- DAILY LOG -->
+      <div id="page-daily" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <label style="font-size:12px;color:var(--muted);font-weight:600">Agent:</label>
+          <select id="dailyAgentFilter" onchange="renderDaily()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:13px;outline:none">
+            <option value="ALL">All agents</option>
+          </select>
+          <label style="font-size:12px;color:var(--muted);font-weight:600">From:</label>
+          <input type="date" id="dailyFrom" onchange="renderDaily()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:13px;outline:none">
+          <label style="font-size:12px;color:var(--muted);font-weight:600">To:</label>
+          <input type="date" id="dailyTo" onchange="renderDaily()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:var(--radius-sm);font-size:13px;outline:none">
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Daily Report Log</div><span style="font-size:11px;color:var(--muted)" id="dailyCount"></span></div>
+          <table class="tbl" id="dailyTable">
+            <thead><tr><th>Date</th><th>Agent</th><th>Team</th><th>Calls</th><th>Reached</th><th>Reached %</th><th>Interested</th><th>Interested %</th><th>Sent AM</th><th>Talk Time</th></tr></thead>
+            <tbody id="dailyBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- WEEKLY TREND -->
+      <div id="page-weekly" style="display:none">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-header"><div class="card-title">Weekly Trend — Monday to Friday</div></div>
+          <div class="legend">
+            <span><span class="legend-dot" style="background:#4f8ef7"></span>Calls</span>
+            <span><span class="legend-dot" style="background:#30d9a0"></span>Reached</span>
+            <span><span class="legend-dot" style="background:#f7ac4f"></span>Interested</span>
+          </div>
+          <div class="chart-wrap" style="height:250px"><canvas id="weeklyChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Weekly Summary Table</div></div>
+          <table class="tbl">
+            <thead><tr><th>Week</th><th>Dates</th><th>Calls</th><th>Reached</th><th>Reached %</th><th>Interested</th><th>Interested %</th><th>Sent AM</th></tr></thead>
+            <tbody id="weeklyBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const API_KEY = 'AIzaSyDAVcTb7bPSOnjt-XVWkk9pdG41YYRoVTM';
+const DAILY_SHEET_ID   = '1wlnQWcaWlLKjuhFmppLaCeUpybsnLa1U3rzY4MMACgA';
+// Conversion spreadsheet intentionally not used. All stats come from Report B2B daily rows only.
+const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 min auto-refresh
+
+// Agent config: sheet tab name → display info
+const AGENT_CONFIG = [
+  {sheet:'Chuka (Art)',    name:'Chuka',   team:'Art',   color:'#4f8ef7'},
+  {sheet:'Talent (Art)',   name:'Talent',  team:'Art',   color:'#30d9a0'},
+  {sheet:'Teejay (Oscar)', name:'Teejay',  team:'Oscar', color:'#f76f6f'},
+  {sheet:'Kelechi (Oscar)',name:'Kelechi', team:'Oscar', color:'#f7ac4f'},
+  {sheet:'Sam (Leo)',      name:'Sam',     team:'Leo',   color:'#a78bfa'},
+  {sheet:'Danny (Leo)',    name:'Danny',   team:'Leo',   color:'#38bdf8'},
+  {sheet:'Richard (Max)',  name:'Richard', team:'Max',   color:'#f87171'},
+  {sheet:'Adnan (Oscar)',  name:'Adnan',   team:'Oscar', color:'#fb923c'},
+  {sheet:'Chimka (Max)',   name:'Chimka',  team:'Max',   color:'#a3e635'},
+  {sheet:'Eric (Max)',     name:'Eric',    team:'Max',   color:'#e879f9'},
+  {sheet:'Stephen (Leo)',  name:'Stephen', team:'Leo',   color:'#67e8f9'},
+  {sheet:'Roland (Leo)',   name:'Roland',  team:'Leo',   color:'#fcd34d'},
+];
+
+const TEAM_COLORS = {Art:'#4f8ef7', Oscar:'#30d9a0', Leo:'#f7ac4f', Max:'#a78bfa'};
+const MONTH_LABELS = {FEB:'February',MAR:'March',APR:'April',MAY:'May',ALL:'All Months'};
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let DB = {
+  daily: [],      // [{date, agent, team, color, calls, reached, interested, sent, talkTime}]
+  weekly: [],     // [{weekNum, dateLabel, calls, reached, interested, sent}]
+  monthly: {},    // {FEB:{calls,reached,...}, MAR:..., ...}
+  agents: {},     // {name: {team, color, months:{FEB:{...}, MAR:{...},...}, allTime:{...}}}
+  lastFetch: null
+};
+let currentPage = 'overview';
+let currentMonth = 'ALL';
+let charts = {};
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const pct = (a,b) => b > 0 ? +(a/b*100).toFixed(1) : 0;
+const fmt = n => typeof n==='number' ? n.toLocaleString() : (n||'—');
+const fmtPct = n => n.toFixed(1)+'%';
+const destroyChart = id => { if(charts[id]){charts[id].destroy();delete charts[id];}};
+
+// ─── GOOGLE SHEETS API ───────────────────────────────────────────────────────
+async function sheetsGet(spreadsheetId, range) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?key=${API_KEY}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Sheets API error ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  return json.values || [];
+}
+
+async function getSheetNames(spreadsheetId) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?key=${API_KEY}&fields=sheets.properties.title`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Sheets API error ${res.status}`);
+  const json = await res.json();
+  return (json.sheets || []).map(s => s.properties.title);
+}
+
+// ─── DATA PARSING ─────────────────────────────────────────────────────────────
+function parseNum(v) {
+  if (v===undefined || v===null || v==='') return 0;
+  const n = parseFloat(String(v).replace(/[^0-9.-]/g,''));
+  return isNaN(n) ? 0 : n;
+}
+
+function parseDate(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+
+  // Report B2B daily rows use DD/MM/YYYY, e.g. 11/05/2026.
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    const day = +m[1];
+    const month = +m[2];
+    const year = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    return new Date(year, month - 1, day);
+  }
+
+  // Also support DD.MM.YYYY.
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+  if (m) {
+    const day = +m[1];
+    const month = +m[2];
+    const year = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    return new Date(year, month - 1, day);
+  }
+
+  // Important: do not use new Date("11/05/2026") because browsers may read
+  // slash dates as MM/DD/YYYY.
+  return null;
+}
+
+function isDailyDateLabel(v) {
+  const s = String(v || '').trim();
+  return /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.test(s) ||
+         /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/.test(s);
+}
+
+function toLocalDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function monthKey(d) {
+  if (!d) return null;
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return months[d.getMonth()];
+}
+
+// Parse one Report B2B agent tab.
+// ONLY rows where column A is a daily date are counted.
+// Column mapping:
+// A = Date, B = Processed, C = Calls, D = Answered/Reached,
+// E = Not interested, F = Interested, G = Transferred to AM, I = Talk time.
+function parseAgentSheet(rows, agentName, team, color) {
+  const daily = [];
+  const seenDates = new Set();
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const rawDate = String(row[0] || '').trim();
+
+    // This is the entire source rule:
+    // if column A is not DD/MM/YYYY or DD.MM.YYYY, skip it.
+    if (!isDailyDateLabel(rawDate)) continue;
+
+    const dt = parseDate(rawDate);
+    if (!dt || isNaN(dt)) continue;
+
+    const dateStr = toLocalDateStr(dt);
+
+    // Per-agent/date duplicate protection.
+    // If a tab has the same daily date twice, count the first dated row only.
+    if (seenDates.has(dateStr)) {
+      console.warn(`Skipped duplicate date row in ${agentName}: ${rawDate} at sheet row ${i + 1}`);
+      continue;
+    }
+    seenDates.add(dateStr);
+
+    const processed = parseNum(row[1]);     // B
+    const calls = parseNum(row[2]);         // C
+    const reached = parseNum(row[3]);       // D
+    const notInterested = parseNum(row[4]); // E
+    const interested = parseNum(row[5]);    // F
+    const sent = parseNum(row[6]);          // G
+    const talkTime = row[8] || '';          // I
+
+    // Skip empty date rows.
+    if (
+      processed === 0 &&
+      calls === 0 &&
+      reached === 0 &&
+      notInterested === 0 &&
+      interested === 0 &&
+      sent === 0
+    ) {
+      continue;
+    }
+
+    daily.push({
+      sheetRow: i + 1,
+      date: dt,
+      dateStr,
+      agent: agentName,
+      team,
+      color,
+      processed,
+      calls,
+      reached,
+      answered: reached,
+      notInterested,
+      interested,
+      sent,
+      talkTime
+    });
+  }
+
+  return {daily};
+}
+
+// ─── MAIN FETCH ───────────────────────────────────────────────────────────────
+async function fetchAllData() {
+  setLoading(true, 'Fetching Report B2B daily rows…');
+
+  const newDB = {daily: [], weekly: [], monthly: {}, agents: {}, lastFetch: new Date()};
+
+  // Use ONLY the real calling-agent tabs with parentheses.
+  // No plain-name tabs. No conversion spreadsheet. No summary tabs.
+  const tabsToLoad = AGENT_CONFIG.filter(ag => /\(.+\)/.test(ag.sheet));
+
+  // Known copied-history issue: Eric's Feb/Mar/Apr rows are copied from Chuka
+  // and must not be counted.
+  const IGNORE_AGENT_MONTHS = {
+    Eric: new Set(['FEB', 'MAR', 'APR'])
+  };
+
+  for (let ai = 0; ai < tabsToLoad.length; ai++) {
+    const ag = tabsToLoad[ai];
+    setLoading(true, `Loading ${ag.sheet} (${ai + 1}/${tabsToLoad.length})…`);
+
+    try {
+      const rows = await sheetsGet(DAILY_SHEET_ID, `'${ag.sheet}'!A:J`);
+      const parsed = parseAgentSheet(rows, ag.name, ag.team, ag.color);
+
+      const cleanRows = parsed.daily.filter(row => {
+        const m = monthKey(row.date);
+        return !IGNORE_AGENT_MONTHS[row.agent]?.has(m);
+      });
+
+      newDB.agents[ag.name] = {
+        sheet: ag.sheet,
+        team: ag.team,
+        color: ag.color,
+        months: {},
+        weekly: []
+      };
+
+      cleanRows.forEach(row => {
+        newDB.daily.push(row);
+
+        const m = monthKey(row.date);
+        if (!newDB.agents[ag.name].months[m]) {
+          newDB.agents[ag.name].months[m] = {
+            processed: 0,
+            calls: 0,
+            reached: 0,
+            notInterested: 0,
+            interested: 0,
+            sent: 0
+          };
+        }
+
+        const md = newDB.agents[ag.name].months[m];
+        md.processed += row.processed || 0;
+        md.calls += row.calls || 0;
+        md.reached += row.reached || 0;
+        md.notInterested += row.notInterested || 0;
+        md.interested += row.interested || 0;
+        md.sent += row.sent || 0;
+      });
+    } catch (e) {
+      console.error(`Could not load ${ag.sheet}:`, e);
+    }
+  }
+
+  newDB.daily.sort((a, b) => b.date - a.date);
+
+  // Monthly totals from daily rows only.
+  newDB.daily.forEach(row => {
+    const m = monthKey(row.date);
+    if (!newDB.monthly[m]) {
+      newDB.monthly[m] = {
+        processed: 0,
+        calls: 0,
+        reached: 0,
+        notInterested: 0,
+        interested: 0,
+        sent: 0
+      };
+    }
+
+    newDB.monthly[m].processed += row.processed || 0;
+    newDB.monthly[m].calls += row.calls || 0;
+    newDB.monthly[m].reached += row.reached || 0;
+    newDB.monthly[m].notInterested += row.notInterested || 0;
+    newDB.monthly[m].interested += row.interested || 0;
+    newDB.monthly[m].sent += row.sent || 0;
+  });
+
+  // Weekly Trend — MONDAY THROUGH FRIDAY ONLY.
+  //
+  // This is the only weekly rule:
+  // - Find every daily row where column A is a date.
+  // - Put that row into the week whose Monday <= date <= Friday.
+  // - Ignore Saturday and Sunday.
+  //
+  // Example:
+  // 11/05/2026, 12/05/2026, 13/05/2026, 14/05/2026, 15/05/2026
+  // all count into 11 May – 15 May.
+  const weekMap = {};
+
+  function localMidnight(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function mondayForDate(date) {
+    const d = localMidnight(date);
+    const day = d.getDay(); // 0 Sun, 1 Mon, 2 Tue, 3 Wed, 4 Thu, 5 Fri, 6 Sat
+
+    // Weekly Trend excludes weekends completely.
+    if (day === 0 || day === 6) return null;
+
+    d.setDate(d.getDate() - (day - 1));
+    return d;
+  }
+
+  function addDays(date, days) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  newDB.daily.forEach(row => {
+    const rowDate = localMidnight(row.date);
+    const monday = mondayForDate(rowDate);
+
+    // Skip Saturday/Sunday rows.
+    if (!monday) return;
+
+    const friday = addDays(monday, 4);
+
+    // Safety check: count only rows that fall Monday-Friday.
+    if (rowDate < monday || rowDate > friday) return;
+
+    const weekKey = toLocalDateStr(monday);
+
+    if (!weekMap[weekKey]) {
+      weekMap[weekKey] = {
+        monday,
+        friday,
+        rows: [],
+        processed: 0,
+        calls: 0,
+        reached: 0,
+        notInterested: 0,
+        interested: 0,
+        sent: 0
+      };
+    }
+
+    weekMap[weekKey].rows.push(row);
+    weekMap[weekKey].processed += row.processed || 0;
+    weekMap[weekKey].calls += row.calls || 0;
+    weekMap[weekKey].reached += row.reached || 0;
+    weekMap[weekKey].notInterested += row.notInterested || 0;
+    weekMap[weekKey].interested += row.interested || 0;
+    weekMap[weekKey].sent += row.sent || 0;
+  });
+
+  newDB.weekly = Object.entries(weekMap)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, w]) => {
+      const fmt2 = d => `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}`;
+
+      return {
+        label: fmt2(w.monday),
+        dateLabel: `${fmt2(w.monday)} – ${fmt2(w.friday)}`,
+        processed: w.processed,
+        calls: w.calls,
+        reached: w.reached,
+        notInterested: w.notInterested,
+        interested: w.interested,
+        sent: w.sent,
+        rowCount: w.rows.length
+      };
+    });
+
+  // Console audit: open DevTools → Console to see exactly what rows got grouped.
+  console.table(newDB.weekly.map(w => ({
+    week: w.dateLabel,
+    dateRowsCounted: w.rowCount,
+    calls: w.calls,
+    reached: w.reached,
+    interested: w.interested,
+    sentToAM: w.sent,
+    reachedConversion: pct(w.reached, w.calls) + '%',
+    interestedConversion: pct(w.interested, w.reached) + '%'
+  })));
+
+  // Browser-console audit so we can see exactly what each week is pulling.
+  console.table(newDB.weekly.map(w => ({
+    week: w.dateLabel,
+    dateRowsCounted: w.rowCount,
+    calls: w.calls,
+    reached: w.reached,
+    interested: w.interested,
+    sent: w.sent,
+    reachedConversion: pct(w.reached, w.calls) + '%',
+    interestedConversion: pct(w.interested, w.reached) + '%'
+  })));
+
+  console.table(Object.keys(newDB.agents).sort().map(name => ({
+    agent: name,
+    aprilCalls: newDB.agents[name].months?.APR?.calls || 0,
+    mayCalls: newDB.agents[name].months?.MAY?.calls || 0,
+    sheet: newDB.agents[name].sheet
+  })));
+
+  DB = newDB;
+
+  const sel = document.getElementById('dailyAgentFilter');
+  sel.innerHTML = '<option value="ALL">All agents</option>';
+  Object.keys(DB.agents).sort().forEach(name => {
+    sel.insertAdjacentHTML('beforeend', `<option value="${name}">${name}</option>`);
+  });
+
+  setSyncStatus(true);
+  setLoading(false);
+  renderPage();
+}
+
+// ─── SYNC STATUS ──────────────────────────────────────────────────────────────
+function setSyncStatus(ok, msg) {
+  const dot = document.getElementById('syncDot');
+  const status = document.getElementById('syncStatus');
+  dot.className = 'sync-dot ' + (ok ? 'live' : 'error');
+  status.textContent = ok ? 'Live' : (msg||'Error');
+  if(DB.lastFetch) {
+    document.getElementById('lastSync').textContent = 'Last sync: ' + DB.lastFetch.toLocaleTimeString();
+  }
+}
+
+function setLoading(show, msg) {
+  const el = document.getElementById('loadingOverlay');
+  el.classList.toggle('hidden', !show);
+  if(msg) document.getElementById('loadingMsg').textContent = msg;
+}
+
+function showError(msg) {
+  const b = document.getElementById('errorBanner');
+  b.style.display = msg ? 'block' : 'none';
+  b.textContent = msg || '';
+}
+
+// ─── PERIOD DATA ──────────────────────────────────────────────────────────────
+function getPeriodAgentData(agName) {
+  const ag = DB.agents[agName];
+  if (!ag) return null;
+  if (currentMonth === 'ALL') {
+    let calls=0,reached=0,interested=0,sent=0;
+    Object.values(ag.months).forEach(m=>{calls+=m.calls;reached+=m.reached;interested+=m.interested;sent+=m.sent;});
+    return {team:ag.team,color:ag.color,calls,reached,interested,sent};
+  }
+  const m = ag.months[currentMonth];
+  if (!m) return {team:ag.team,color:ag.color,calls:0,reached:0,interested:0,sent:0};
+  return {team:ag.team,color:ag.color,...m};
+}
+
+function getPeriodTotal() {
+  if (currentMonth === 'ALL') {
+    let calls=0,reached=0,interested=0,sent=0;
+    Object.values(DB.monthly).forEach(m=>{calls+=m.calls;reached+=m.reached;interested+=m.interested;sent+=m.sent;});
+    return {calls,reached,interested,sent};
+  }
+  return DB.monthly[currentMonth] || {calls:0,reached:0,interested:0,sent:0};
+}
+
+// ─── PAGE NAVIGATION ─────────────────────────────────────────────────────────
+function showPage(page) {
+  currentPage = page;
+  document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display='none');
+  document.getElementById('page-'+page).style.display='';
+  document.querySelectorAll('.nav-item').forEach((b,i)=>{
+    b.classList.toggle('active', ['overview','agents','funnel','daily','weekly'][i]===page);
+  });
+  const titles={overview:'Overview',agents:'Agent Performance',funnel:'Sales Funnel',daily:'Daily Log',weekly:'Weekly Trend'};
+  document.getElementById('pageTitle').textContent = titles[page]||page;
+  renderPage();
+}
+
+function setMonth(m) {
+  currentMonth = m;
+  document.querySelectorAll('.mtab').forEach(b=>{
+    b.classList.toggle('active', b.textContent.trim().toUpperCase().startsWith(m.slice(0,3)) || (m==='ALL'&&b.textContent.trim()==='All'));
+  });
+  renderPage();
+}
+
+function renderPage() {
+  if(currentPage==='overview') renderOverview();
+  if(currentPage==='agents')   renderAgents();
+  if(currentPage==='funnel')   renderFunnel();
+  if(currentPage==='daily')    renderDaily();
+  if(currentPage==='weekly')   renderWeekly();
+}
+
+// ─── OVERVIEW ─────────────────────────────────────────────────────────────────
+function renderOverview() {
+  const t = getPeriodTotal();
+  const prevM = {ALL:'',FEB:'JAN',MAR:'FEB',APR:'MAR',MAY:'APR'}[currentMonth];
+  const prev = prevM && DB.monthly[prevM] ? DB.monthly[prevM] : null;
+
+  const delta = (cur, prv, key) => {
+    if(!prv) return '';
+    const diff = cur - prv[key];
+    const sign = diff >= 0 ? '↑' : '↓';
+    const cls = diff >= 0 ? 'delta-up' : 'delta-dn';
+    return `<span class="kpi-delta ${cls}">${sign} ${Math.abs(diff).toLocaleString()}</span>`;
+  };
+
+  const activeAgents = Object.keys(DB.agents).filter(n => {
+    const d = getPeriodAgentData(n);
+    return d && d.calls > 0;
+  }).length;
+
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="kpi" style="--kpi-color:#4f8ef7">
+      <div class="kpi-label">Total Calls</div>
+      <div class="kpi-val">${fmt(t.calls)}${delta(t.calls,prev,'calls')}</div>
+      <div class="kpi-sub">${MONTH_LABELS[currentMonth]}</div>
+    </div>
+    <div class="kpi" style="--kpi-color:#30d9a0">
+      <div class="kpi-label">Reached</div>
+      <div class="kpi-val">${fmt(t.reached)}${delta(t.reached,prev,'reached')}</div>
+      <div class="kpi-sub">${pct(t.reached,t.calls)}% reached conversion</div>
+    </div>
+    <div class="kpi" style="--kpi-color:#f7ac4f">
+      <div class="kpi-label">Interested</div>
+      <div class="kpi-val">${fmt(t.interested)}${delta(t.interested,prev,'interested')}</div>
+      <div class="kpi-sub">${pct(t.interested,t.reached)}% of reached</div>
+    </div>
+    <div class="kpi" style="--kpi-color:#a78bfa">
+      <div class="kpi-label">Sent to AM</div>
+      <div class="kpi-val">${fmt(t.sent)}${delta(t.sent,prev,'sent')}</div>
+      <div class="kpi-sub">${pct(t.sent,t.interested)}% of interested</div>
+    </div>
+    <div class="kpi" style="--kpi-color:#f76f6f">
+      <div class="kpi-label">Active Agents</div>
+      <div class="kpi-val">${activeAgents}</div>
+      <div class="kpi-sub">with call activity</div>
+    </div>
+  `;
+
+  document.getElementById('overviewPeriodLabel').textContent = MONTH_LABELS[currentMonth];
+
+  // Monthly bar chart
+  const availMonths = Object.keys(DB.monthly).filter(m=>DB.monthly[m].calls>0);
+  destroyChart('monthly');
+  charts.monthly = new Chart(document.getElementById('monthlyChart'), {
+    type:'bar',
+    data:{
+      labels: availMonths.map(m=>m[0]+m.slice(1).toLowerCase()),
+      datasets:[
+        {label:'Calls', data:availMonths.map(m=>DB.monthly[m].calls), backgroundColor:'#4f8ef7'},
+        {label:'Reached', data:availMonths.map(m=>DB.monthly[m].reached), backgroundColor:'#30d9a0'},
+        {label:'Interested', data:availMonths.map(m=>DB.monthly[m].interested), backgroundColor:'#f7ac4f'},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#8b92b8'},grid:{color:'rgba(255,255,255,0.04)'}},
+              y:{ticks:{color:'#8b92b8'},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+
+  // Connect rate chart
+  const activeAgs = Object.keys(DB.agents).map(name=>{
+    const d = getPeriodAgentData(name);
+    return d && d.calls>0 ? {name, ...d} : null;
+  }).filter(Boolean).sort((a,b)=>b.calls-a.calls);
+
+  destroyChart('connect');
+  charts.connect = new Chart(document.getElementById('connectChart'), {
+    type:'bar',
+    data:{
+      labels: activeAgs.map(a=>a.name),
+      datasets:[{label:'Connect %', data:activeAgs.map(a=>pct(a.reached,a.calls)),
+        backgroundColor:activeAgs.map(a=>a.color)}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#8b92b8',font:{size:11}},grid:{display:false}},
+              y:{ticks:{color:'#8b92b8',callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+
+  destroyChart('interest');
+  charts.interest = new Chart(document.getElementById('interestChart'), {
+    type:'bar',
+    data:{
+      labels: activeAgs.map(a=>a.name),
+      datasets:[{label:'Interest %', data:activeAgs.map(a=>pct(a.interested,a.reached)),
+        backgroundColor:activeAgs.map(a=>a.color+'aa')}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#8b92b8',font:{size:11}},grid:{display:false}},
+              y:{ticks:{color:'#8b92b8',callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+}
+
+// ─── AGENTS ───────────────────────────────────────────────────────────────────
+function renderAgents() {
+  document.getElementById('agentPeriodLabel').textContent = MONTH_LABELS[currentMonth];
+  const rows = Object.keys(DB.agents).map(name => {
+    const d = getPeriodAgentData(name);
+    return d ? {name, ...d} : null;
+  }).filter(Boolean).sort((a,b)=>b.calls-a.calls);
+  const maxCalls = Math.max(...rows.map(r=>r.calls), 1);
+
+  const tbody = document.getElementById('agentBody');
+  tbody.innerHTML = '';
+  rows.forEach(ag => {
+    const cr = pct(ag.reached,ag.calls);
+    const ir = pct(ag.interested,ag.reached);
+    const barW = Math.round(ag.calls/maxCalls*100);
+    const init = ag.name.slice(0,2).toUpperCase();
+    let badgeClass, badgeText;
+    if(ag.calls===0){badgeClass='b-red';badgeText='Inactive';}
+    else if(cr>=15){badgeClass='b-green';badgeText='Top';}
+    else if(cr>=10){badgeClass='b-blue';badgeText='Good';}
+    else if(cr>=6){badgeClass='b-warn';badgeText='Avg';}
+    else{badgeClass='b-red';badgeText='Low';}
+
+    tbody.insertAdjacentHTML('beforeend',`
+      <tr>
+        <td><div class="agent-cell">
+          <div class="avatar" style="background:${ag.color}22;color:${ag.color}">${init}</div>
+          <span style="font-weight:600">${ag.name}</span>
+        </div></td>
+        <td><span class="badge" style="background:${TEAM_COLORS[ag.team]||'#fff'}22;color:${TEAM_COLORS[ag.team]||'#fff'}">${ag.team}</span></td>
+        <td>${fmt(ag.calls)}<div class="bar-outer"><div class="bar-inner" style="width:${barW}%;background:${ag.color}"></div></div></td>
+        <td>${fmt(ag.reached)}</td>
+        <td style="color:${cr>=12?'var(--accent2)':cr>=7?'var(--warn)':'var(--danger)'}">${cr}%</td>
+        <td>${fmt(ag.interested)}</td>
+        <td style="color:${ir>=40?'var(--accent2)':ir>=25?'var(--warn)':'var(--danger)'}">${ir}%</td>
+        <td>${fmt(ag.sent)}</td>
+        <td style="color:var(--muted);font-size:12px">${ag.talkTime||'—'}</td>
+        <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+      </tr>
+    `);
+  });
+}
+
+// ─── FUNNEL ───────────────────────────────────────────────────────────────────
+function renderFunnel() {
+  const t = getPeriodTotal();
+  document.getElementById('funnelPeriodLabel').textContent = MONTH_LABELS[currentMonth];
+  const steps = [
+    {name:'Calls made',   val:t.calls,      prev:t.calls},
+    {name:'Reached',      val:t.reached,    prev:t.calls},
+    {name:'Interested',   val:t.interested, prev:t.reached},
+    {name:'Sent to AM',   val:t.sent,       prev:t.interested},
+  ];
+  const colors = ['#4f8ef7','#30d9a0','#f7ac4f','#a78bfa'];
+  const maxV = steps[0].val || 1;
+
+  document.getElementById('funnelList').innerHTML = '';
+  steps.forEach((s,i)=>{
+    const barW = Math.round(s.val/maxV*100);
+    const rate = i===0?'100%':pct(s.val,s.prev)+'%';
+    document.getElementById('funnelList').insertAdjacentHTML('beforeend',`
+      <div class="funnel-item">
+        <div class="funnel-label">${s.name}</div>
+        <div class="funnel-bar-wrap">
+          <div class="funnel-bar" style="width:${barW}%;background:${colors[i]}">
+            <span>${fmt(s.val)}</span>
+          </div>
+        </div>
+        <div class="funnel-pct">${rate}</div>
+      </div>
+    `);
+  });
+
+  destroyChart('funnelChart');
+  charts.funnelChart = new Chart(document.getElementById('funnelChart'),{
+    type:'doughnut',
+    data:{labels:steps.map(s=>s.name),datasets:[{data:steps.map(s=>s.val||0),backgroundColor:colors,borderWidth:0,hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
+      plugins:{legend:{position:'right',labels:{color:'#8b92b8',font:{size:11},boxWidth:12,padding:8}}}}
+  });
+
+  const availM = Object.keys(DB.monthly).filter(m=>DB.monthly[m].calls>0);
+  destroyChart('momChart');
+  charts.momChart = new Chart(document.getElementById('momChart'),{
+    type:'bar',
+    data:{
+      labels:availM.map(m=>m[0]+m.slice(1).toLowerCase()),
+      datasets:[
+        {label:'Calls',data:availM.map(m=>DB.monthly[m].calls),backgroundColor:'#4f8ef755',borderColor:'#4f8ef7',borderWidth:2},
+        {label:'Reached',data:availM.map(m=>DB.monthly[m].reached),backgroundColor:'#30d9a055',borderColor:'#30d9a0',borderWidth:2},
+        {label:'Interested',data:availM.map(m=>DB.monthly[m].interested),backgroundColor:'#f7ac4f55',borderColor:'#f7ac4f',borderWidth:2},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8b92b8',font:{size:11}}}},
+      scales:{x:{ticks:{color:'#8b92b8'},grid:{display:false}},y:{ticks:{color:'#8b92b8'},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+}
+
+// ─── DAILY LOG ────────────────────────────────────────────────────────────────
+function renderDaily() {
+  const agFilter = document.getElementById('dailyAgentFilter').value;
+  const fromInput = document.getElementById('dailyFrom').value;
+  const toInput = document.getElementById('dailyTo').value;
+  const fromDate = fromInput ? new Date(fromInput) : null;
+  const toDate = toInput ? new Date(toInput+'T23:59:59') : null;
+
+  // Filter by selected period month as well
+  let rows = DB.daily.filter(d => {
+    if(agFilter!=='ALL' && d.agent!==agFilter) return false;
+    if(fromDate && d.date < fromDate) return false;
+    if(toDate && d.date > toDate) return false;
+    if(currentMonth!=='ALL'){
+      const m = monthKey(d.date);
+      if(m!==currentMonth) return false;
+    }
+    return true;
+  });
+
+  document.getElementById('dailyCount').textContent = `${rows.length} records`;
+  const today = new Date().toISOString().slice(0,10);
+  const tbody = document.getElementById('dailyBody');
+  tbody.innerHTML = '';
+
+  if(rows.length===0){
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">No data for selected filters</td></tr>';
+    return;
+  }
+
+  rows.forEach(d => {
+    const cr = pct(d.reached,d.calls);
+    const ir = pct(d.interested,d.reached);
+    const isToday = d.dateStr===today;
+    const opts = {month:'short',day:'numeric'};
+    const dLabel = d.date.toLocaleDateString('en-GB',opts);
+    tbody.insertAdjacentHTML('beforeend',`
+      <tr class="${isToday?'daily-row-today':''}">
+        <td style="white-space:nowrap;font-weight:${isToday?'600':'400'}">${dLabel}${isToday?' ◀':''}</td>
+        <td><div class="agent-cell"><div class="avatar" style="width:22px;height:22px;font-size:9px;background:${d.color}22;color:${d.color}">${d.agent.slice(0,2).toUpperCase()}</div>${d.agent}</div></td>
+        <td><span class="badge" style="background:${TEAM_COLORS[d.team]||'#fff'}22;color:${TEAM_COLORS[d.team]||'#fff'}">${d.team}</span></td>
+        <td>${fmt(d.calls)}</td>
+        <td>${fmt(d.reached)}</td>
+        <td style="color:${cr>=12?'var(--accent2)':cr>=7?'var(--warn)':'var(--danger)'}">${cr}%</td>
+        <td>${fmt(d.interested)}</td>
+        <td style="color:${ir>=40?'var(--accent2)':ir>=25?'var(--warn)':'var(--danger)'}">${ir}%</td>
+        <td>${fmt(d.sent)}</td>
+        <td style="color:var(--muted);font-size:12px">${d.talkTime||'—'}</td>
+      </tr>
+    `);
+  });
+}
+
+// ─── WEEKLY TREND ─────────────────────────────────────────────────────────────
+function renderWeekly() {
+  const weeks = DB.weekly;
+  destroyChart('weekly');
+  charts.weekly = new Chart(document.getElementById('weeklyChart'),{
+    type:'line',
+    data:{
+      labels: weeks.map(w=>w.label),
+      datasets:[
+        {label:'Calls',data:weeks.map(w=>w.calls),borderColor:'#4f8ef7',backgroundColor:'rgba(79,142,247,0.1)',fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#4f8ef7'},
+        {label:'Reached',data:weeks.map(w=>w.reached),borderColor:'#30d9a0',fill:false,tension:.4,pointRadius:3,borderDash:[4,4]},
+        {label:'Interested',data:weeks.map(w=>w.interested),borderColor:'#f7ac4f',fill:false,tension:.4,pointRadius:3,borderDash:[2,2]},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#8b92b8',font:{size:11}}}},
+      scales:{x:{ticks:{color:'#8b92b8',font:{size:11},maxRotation:45},grid:{color:'rgba(255,255,255,0.04)'}},
+              y:{ticks:{color:'#8b92b8'},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+
+  const tbody = document.getElementById('weeklyBody');
+  tbody.innerHTML = '';
+  weeks.slice().reverse().forEach(w => {
+    const cr = pct(w.reached,w.calls);
+    const ir = pct(w.interested,w.reached);
+    tbody.insertAdjacentHTML('beforeend',`
+      <tr>
+        <td style="font-weight:600">${w.label}</td>
+        <td style="color:var(--muted)">${w.dateLabel}</td>
+        <td>${fmt(w.calls)}</td>
+        <td>${fmt(w.reached)}</td>
+        <td style="color:${cr>=12?'var(--accent2)':cr>=7?'var(--warn)':'var(--danger)'}">${cr}%</td>
+        <td>${fmt(w.interested)}</td>
+        <td style="color:${ir>=40?'var(--accent2)':ir>=25?'var(--warn)':'var(--danger)'}">${ir}%</td>
+        <td>${fmt(w.sent)}</td>
+      </tr>
+    `);
+  });
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+function exportCSV() {
+  let csv = 'Agent,Team,Month,Calls,Reached,Reached %,Interested,Interested %,SentAM\n';
+  Object.keys(DB.agents).sort().forEach(name => {
+    const a = DB.agents[name];
+    if(!a) return;
+    Object.entries(a.months).forEach(([m,d])=>{
+      csv += `${name},${a.team},${m},${d.calls},${d.reached},${pct(d.reached,d.calls)},${d.interested},${pct(d.interested,d.reached)},${d.sent}\n`;
+    });
+  });
+  const blob = new Blob([csv],{type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`b2b_report_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  toast('CSV exported!');
+}
+
+// ─── REFRESH ──────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  try {
+    await fetchAllData();
+    toast('Data refreshed!');
+  } catch(e) {
+    setSyncStatus(false, 'Error');
+    showError('Could not fetch data: ' + e.message + '. Check the API key and that the sheets are public.');
+    toast('Refresh failed', true);
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+function toast(msg, err=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = err ? 'var(--danger)' : 'var(--accent2)';
+  t.style.color = err ? '#fff' : '#0f1117';
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+(async function init() {
+  // Set default date range for daily log
+  const today = new Date();
+  const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate()-30);
+  document.getElementById('dailyFrom').value = monthAgo.toISOString().slice(0,10);
+  document.getElementById('dailyTo').value = today.toISOString().slice(0,10);
+
+  // Set month tabs correctly
+  document.querySelectorAll('.mtab').forEach(b=>{
+    b.classList.toggle('active', b.textContent.trim()==='All');
+  });
+
+  try {
+    await fetchAllData();
+  } catch(e) {
+    setLoading(false);
+    setSyncStatus(false, 'Error');
+    showError('⚠ Could not load Google Sheets data. Make sure both spreadsheets are shared as "Anyone with link → Viewer". Error: ' + e.message);
+    document.getElementById('syncStatus').textContent = 'Offline';
+  }
+
+  // Auto-refresh every 5 minutes
+  setInterval(async () => {
+    try { await fetchAllData(); }
+    catch(e) { console.warn('Auto-refresh failed:', e.message); }
+  }, REFRESH_INTERVAL);
+})();
+</script>
+</body>
+</html>

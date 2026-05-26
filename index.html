@@ -277,7 +277,8 @@ nav{padding:12px 8px;flex:1}
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_KEY = 'AIzaSyDAVcTb7bPSOnjt-XVWkk9pdG41YYRoVTM';
 const DAILY_SHEET_ID   = '1wlnQWcaWlLKjuhFmppLaCeUpybsnLa1U3rzY4MMACgA';
-const CONV_SHEET_ID    = '1adtGVVaRNZ5IdrWgeRZKWZ8uZVPy-Th6vZjgWpoqPxY';
+// Conversion spreadsheet is intentionally not used for dashboard KPIs.
+// All statistics come only from Report B2B agent tabs.
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 min auto-refresh
 
 // Agent config: sheet tab name → display info
@@ -343,13 +344,38 @@ function parseNum(v) {
 
 function parseDate(v) {
   if (!v) return null;
-  // Try ISO
-  const d = new Date(v);
-  if (!isNaN(d)) return d;
-  // Try dd.mm.yyyy
-  const parts = v.split('.');
-  if (parts.length===3) return new Date(+parts[2], +parts[1]-1, +parts[0]);
-  return null;
+  const s = String(v).trim();
+  if (!s) return null;
+
+  // Google Sheets may return formatted dates like 26.05.2026, 26/05/2026,
+  // 5/26/2026, or ISO dates. Parse manually so daily rows are reliable.
+  let m = s.match(/^(\d{1,2})[.](\d{1,2})[.](\d{2,4})$/);
+  if (m) {
+    const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    return new Date(y, +m[2] - 1, +m[1]);
+  }
+
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    const day = +m[1];
+    const month = +m[2];
+    const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    // Report B2B uses DD/MM/YYYY, e.g. 01/04/2026 = April 1, 2026.
+    return new Date(y, month - 1, day);
+  }
+
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+function toLocalDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function monthKey(d) {
@@ -358,144 +384,255 @@ function monthKey(d) {
   return months[d.getMonth()];
 }
 
-// Parse one agent's sheet rows
-// Columns: Data | Is processed | Calls | Answered | Not interested | Interested | Transferred | Emails | Talk time
+// Parse one agent's sheet rows from the Report B2B spreadsheet only.
+// Source columns:
+// A = Date/Data
+// C = Calls
+// D = Reached/Answered
+// F = Interested
+// G = Sent to AM/Transferred
+// I = Talk time
+//
+// IMPORTANT:
+// - Daily rows are kept for the Daily Log.
+// - Weekly trend and monthly totals are calculated from the sheet's own
+//   "weekly" summary rows, because those match the trusted conversion report.
+// - Monthly summary rows are used only as fallback if weekly rows are missing.
 function parseAgentSheet(rows, agentName, team, color) {
   const daily = [];
-  const monthly = {};
   const weekly = [];
+  const monthlyFromWeekly = {};
+  const monthlyFromSummary = {};
+  const monthlyFromDaily = {};
 
-  for (let i = 1; i < rows.length; i++) { // skip header row 0
-    const row = rows[i];
-    const label = (row[0]||'').toString().trim().toLowerCase();
+  const monthMap = {
+    january:'JAN', jan:'JAN',
+    february:'FEB', feb:'FEB',
+    march:'MAR', mar:'MAR',
+    april:'APR', apr:'APR',
+    may:'MAY',
+    june:'JUN', jun:'JUN',
+    july:'JUL', jul:'JUL',
+    august:'AUG', aug:'AUG',
+    september:'SEP', sep:'SEP',
+    october:'OCT', oct:'OCT',
+    november:'NOV', nov:'NOV',
+    december:'DEC', dec:'DEC'
+  };
 
-    // Monthly summary row
-    const monthMatch = label.match(/monthly\s+(\w+)/i) || label.match(/^(january|february|march|april|may|june|july|august|september|october|november|december)$/i);
-    if (monthMatch) {
-      const mName = (monthMatch[1]||monthMatch[0]).toUpperCase().slice(0,3);
-      monthly[mName] = {
-        calls:      parseNum(row[2]),
-        reached:    parseNum(row[3]),
-        interested: parseNum(row[5]),
-        sent:       parseNum(row[6]),
-        talkTime:   row[8]||'',
-      };
+  function readMetrics(row) {
+    return {
+      calls:      parseNum(row[2]),  // C
+      reached:    parseNum(row[3]),  // D / Successful dialing / Answered
+      interested: parseNum(row[5]),  // F
+      sent:       parseNum(row[6]),  // G / Sent to AM
+      talkTime:   row[8] || ''
+    };
+  }
+
+  function addToMonth(obj, m, metrics) {
+    if (!obj[m]) obj[m] = {calls:0, reached:0, interested:0, sent:0};
+    obj[m].calls += metrics.calls || 0;
+    obj[m].reached += metrics.reached || 0;
+    obj[m].interested += metrics.interested || 0;
+    obj[m].sent += metrics.sent || 0;
+  }
+
+  let currentWeekStart = null;
+  let currentWeekEnd = null;
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const rawLabel = String(row[0] || '').trim();
+    const label = rawLabel.toLowerCase();
+    if (!rawLabel) continue;
+
+    // Monthly summary rows, e.g. "monthly May". Fallback only.
+    const monthMatch = label.match(/^monthly\s+([a-z]+)$/i) || label.match(/^([a-z]+)$/i);
+    if (monthMatch && monthMap[monthMatch[1]]) {
+      const m = monthMap[monthMatch[1]];
+      monthlyFromSummary[m] = readMetrics(row);
       continue;
     }
 
-    // Weekly summary row
-    if (label === 'weekly' || label.startsWith('week')) {
-      weekly.push({
-        calls:      parseNum(row[2]),
-        reached:    parseNum(row[3]),
-        interested: parseNum(row[5]),
-        sent:       parseNum(row[6]),
-      });
+    // Weekly summary rows. These are the trusted rows for weekly trend.
+    if (label.includes('weekly') || label.includes('тижд') || label.includes('week')) {
+      const metrics = readMetrics(row);
+      const score = metrics.calls + metrics.reached + metrics.interested + metrics.sent;
+
+      if (score > 0) {
+        // Use the first date after the previous weekly row as the week key.
+        // If missing, fall back to the most recent daily date seen.
+        const start = currentWeekStart || currentWeekEnd;
+        if (start) {
+          const m = monthKey(start);
+          weekly.push({
+            weekStart: start,
+            weekEnd: currentWeekEnd || start,
+            agent: agentName,
+            team,
+            color,
+            calls: metrics.calls,
+            reached: metrics.reached,
+            interested: metrics.interested,
+            sent: metrics.sent
+          });
+          addToMonth(monthlyFromWeekly, m, metrics);
+        }
+      }
+
+      currentWeekStart = null;
+      currentWeekEnd = null;
       continue;
     }
 
-    // Daily row — label should be a date
-    const dt = parseDate(row[0]);
+    // Daily rows.
+    const dt = parseDate(rawLabel);
     if (!dt || isNaN(dt)) continue;
-    const calls = parseNum(row[2]);
-    if (calls === 0 && parseNum(row[3]) === 0) continue; // skip empty days
 
-    daily.push({
+    const metrics = readMetrics(row);
+    if (metrics.calls === 0 && metrics.reached === 0 && metrics.interested === 0 && metrics.sent === 0) continue;
+
+    if (!currentWeekStart) currentWeekStart = dt;
+    currentWeekEnd = dt;
+
+    const item = {
       date:       dt,
-      dateStr:    dt.toISOString().slice(0,10),
+      dateStr:    toLocalDateStr(dt),
       agent:      agentName,
       team,
       color,
-      calls:      calls,
-      reached:    parseNum(row[3]),
-      interested: parseNum(row[5]),
-      sent:       parseNum(row[6]),
-      talkTime:   row[8]||'',
-    });
+      calls:      metrics.calls,
+      reached:    metrics.reached,
+      interested: metrics.interested,
+      sent:       metrics.sent,
+      talkTime:   metrics.talkTime,
+    };
+
+    daily.push(item);
+    addToMonth(monthlyFromDaily, monthKey(dt), metrics);
   }
+
+  // Source priority for monthly KPIs:
+  // 1) weekly summary rows, because they match the trusted conversion report
+  // 2) monthly summary rows
+  // 3) daily rows
+  const allMonths = new Set([
+    ...Object.keys(monthlyFromDaily),
+    ...Object.keys(monthlyFromSummary),
+    ...Object.keys(monthlyFromWeekly)
+  ]);
+
+  const monthly = {};
+  allMonths.forEach(m => {
+    monthly[m] = monthlyFromWeekly[m] || monthlyFromSummary[m] || monthlyFromDaily[m];
+  });
 
   return {daily, monthly, weekly};
 }
 
 // ─── MAIN FETCH ───────────────────────────────────────────────────────────────
 async function fetchAllData() {
-  setLoading(true, 'Fetching agent sheets…');
+  setLoading(true, 'Fetching Report B2B agent tabs…');
 
   const newDB = {daily:[], weekly:[], monthly:{}, agents:{}, lastFetch: new Date()};
 
-  // Fetch each agent's sheet from the daily report spreadsheet
-  const allWeeklyByAgent = {};
+  // IMPORTANT:
+  // Only tabs with parentheses are used, e.g. "Chuka (Art)".
+  // Plain-name tabs like "Chuka" are intentionally ignored.
+  const tabsToLoad = AGENT_CONFIG.filter(ag => /\(.+\)/.test(ag.sheet));
 
-  for (let ai = 0; ai < AGENT_CONFIG.length; ai++) {
-    const ag = AGENT_CONFIG[ai];
-    setLoading(true, `Loading ${ag.name} (${ai+1}/${AGENT_CONFIG.length})…`);
+  for (let ai = 0; ai < tabsToLoad.length; ai++) {
+    const ag = tabsToLoad[ai];
+    setLoading(true, `Loading ${ag.sheet} (${ai+1}/${tabsToLoad.length})…`);
     try {
       const rows = await sheetsGet(DAILY_SHEET_ID, `'${ag.sheet}'!A:J`);
       if (rows.length < 2) continue;
-      const parsed = parseAgentSheet(rows, ag.name, ag.team, ag.color);
 
+      const parsed = parseAgentSheet(rows, ag.name, ag.team, ag.color);
       newDB.daily.push(...parsed.daily);
       newDB.agents[ag.name] = {
         team: ag.team,
         color: ag.color,
         months: parsed.monthly,
-        weekly: parsed.weekly,
+        weekly: parsed.weekly
       };
-      allWeeklyByAgent[ag.name] = parsed.weekly;
     } catch(e) {
       console.warn(`Could not load ${ag.sheet}:`, e.message);
     }
   }
 
-  // Sort daily by date desc
+  // Sort daily by date desc.
   newDB.daily.sort((a,b) => b.date - a.date);
 
-  // Build monthly totals across all agents
-  const allMonths = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  allMonths.forEach(m => {
-    let calls=0,reached=0,interested=0,sent=0;
-    Object.values(newDB.agents).forEach(ag => {
-      const md = ag.months[m];
-      if(md){ calls+=md.calls; reached+=md.reached; interested+=md.interested; sent+=md.sent; }
+  // Monthly totals come only from the selected Report B2B tabs with parentheses.
+  // The monthly object inside each agent is calculated in parseAgentSheet.
+  Object.values(newDB.agents).forEach(ag => {
+    Object.entries(ag.months || {}).forEach(([m, d]) => {
+      if (!newDB.monthly[m]) newDB.monthly[m] = {calls:0, reached:0, interested:0, sent:0};
+      newDB.monthly[m].calls += d.calls || 0;
+      newDB.monthly[m].reached += d.reached || 0;
+      newDB.monthly[m].interested += d.interested || 0;
+      newDB.monthly[m].sent += d.sent || 0;
     });
-    if(calls>0) newDB.monthly[m] = {calls,reached,interested,sent};
   });
 
-  // Build weekly totals by aggregating daily data per week
+  // Weekly trend comes from each agent tab's own "weekly" summary rows.
+  // This matches the trusted conversion report better than regrouping daily rows.
   const weekMap = {};
-  newDB.daily.forEach(d => {
-    const date = d.date;
-    // Get ISO week
-    const tmp = new Date(date);
-    tmp.setHours(0,0,0,0);
-    tmp.setDate(tmp.getDate() + 3 - (tmp.getDay()+6)%7);
-    const week1 = new Date(tmp.getFullYear(),0,4);
-    const wn = 1 + Math.round(((tmp-week1)/86400000 - 3 + (week1.getDay()+6)%7)/7);
-    const yr = tmp.getFullYear();
-    const key = `${yr}-W${String(wn).padStart(2,'0')}`;
-    if(!weekMap[key]) weekMap[key] = {wn, yr, calls:0, reached:0, interested:0, sent:0, dates:[]};
-    weekMap[key].calls += d.calls;
-    weekMap[key].reached += d.reached;
-    weekMap[key].interested += d.interested;
-    weekMap[key].sent += d.sent;
-    weekMap[key].dates.push(date);
+  Object.values(newDB.agents).forEach(ag => {
+    (ag.weekly || []).forEach(w => {
+      const key = toLocalDateStr(w.weekStart);
+      if (!weekMap[key]) {
+        weekMap[key] = {
+          date: w.weekStart,
+          calls: 0,
+          reached: 0,
+          interested: 0,
+          sent: 0
+        };
+      }
+      weekMap[key].calls += w.calls || 0;
+      weekMap[key].reached += w.reached || 0;
+      weekMap[key].interested += w.interested || 0;
+      weekMap[key].sent += w.sent || 0;
+    });
   });
+
   newDB.weekly = Object.entries(weekMap)
     .sort((a,b) => a[0].localeCompare(b[0]))
-    .filter(([,w]) => w.calls > 5)
     .map(([key,w]) => {
-      const dts = w.dates.sort((a,b)=>a-b);
+      const d = w.date;
+      const fmt2 = d => `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}`;
+      const tmp = new Date(d);
+      tmp.setHours(0,0,0,0);
+      tmp.setDate(tmp.getDate() + 3 - (tmp.getDay()+6)%7);
+      const week1 = new Date(tmp.getFullYear(),0,4);
+      const isoWeek = 1 + Math.round(((tmp-week1)/86400000 - 3 + (week1.getDay()+6)%7)/7);
+
+      return {
+        label: `Wk ${isoWeek}`,
+        dateLabel: fmt2(d),
+        calls: w.calls,
+        reached: w.reached,
+        interested: w.interested,
+        sent: w.sent
+      };
+    });
       const fmt2 = d => `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}`;
       return {
         label: `Wk ${w.wn}`,
         dateLabel: dts.length ? `${fmt2(dts[0])}` : '',
-        calls: w.calls, reached: w.reached, interested: w.interested, sent: w.sent
+        calls: w.calls,
+        reached: w.reached,
+        interested: w.interested,
+        sent: w.sent
       };
     });
 
   DB = newDB;
 
-  // Populate agent filter dropdown
+  // Populate agent filter dropdown.
   const sel = document.getElementById('dailyAgentFilter');
   sel.innerHTML = '<option value="ALL">All agents</option>';
   Object.keys(DB.agents).sort().forEach(name => {
@@ -650,9 +787,9 @@ function renderOverview() {
   });
 
   // Connect rate chart
-  const activeAgs = AGENT_CONFIG.map(ag=>{
-    const d = getPeriodAgentData(ag.name);
-    return d && d.calls>0 ? {...ag, ...d} : null;
+  const activeAgs = Object.keys(DB.agents).map(name=>{
+    const d = getPeriodAgentData(name);
+    return d && d.calls>0 ? {name, ...d} : null;
   }).filter(Boolean).sort((a,b)=>b.calls-a.calls);
 
   destroyChart('connect');
@@ -685,9 +822,9 @@ function renderOverview() {
 // ─── AGENTS ───────────────────────────────────────────────────────────────────
 function renderAgents() {
   document.getElementById('agentPeriodLabel').textContent = MONTH_LABELS[currentMonth];
-  const rows = AGENT_CONFIG.map(ag => {
-    const d = getPeriodAgentData(ag.name);
-    return d ? {...ag,...d} : null;
+  const rows = Object.keys(DB.agents).map(name => {
+    const d = getPeriodAgentData(name);
+    return d ? {name, ...d} : null;
   }).filter(Boolean).sort((a,b)=>b.calls-a.calls);
   const maxCalls = Math.max(...rows.map(r=>r.calls), 1);
 
@@ -877,11 +1014,11 @@ function renderWeekly() {
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
 function exportCSV() {
   let csv = 'Agent,Team,Month,Calls,Reached,Connect%,Interested,Interest%,SentAM\n';
-  AGENT_CONFIG.forEach(ag => {
-    const a = DB.agents[ag.name];
+  Object.keys(DB.agents).sort().forEach(name => {
+    const a = DB.agents[name];
     if(!a) return;
     Object.entries(a.months).forEach(([m,d])=>{
-      csv += `${ag.name},${ag.team},${m},${d.calls},${d.reached},${pct(d.reached,d.calls)},${d.interested},${pct(d.interested,d.reached)},${d.sent}\n`;
+      csv += `${name},${a.team},${m},${d.calls},${d.reached},${pct(d.reached,d.calls)},${d.interested},${pct(d.interested,d.reached)},${d.sent}\n`;
     });
   });
   const blob = new Blob([csv],{type:'text/csv'});
